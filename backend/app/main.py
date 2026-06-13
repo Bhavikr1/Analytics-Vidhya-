@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -37,14 +38,17 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to connect to MongoDB — session history unavailable")
 
-    # Ensure ChromaDB is populated — rebuild from MongoDB if empty
-    try:
-        from app.rag.indexer import ensure_chroma_populated
-        await ensure_chroma_populated()
-    except Exception:
-        logger.exception("ChromaDB population check failed")
+    # ChromaDB rebuild runs in background so healthcheck passes immediately
+    async def _rebuild_chroma():
+        try:
+            from app.rag.indexer import ensure_chroma_populated
+            await ensure_chroma_populated()
+        except Exception:
+            logger.exception("Background ChromaDB rebuild failed")
 
-    # RAG pipeline
+    asyncio.create_task(_rebuild_chroma())
+
+    # RAG pipeline initialises immediately (ChromaDB may still be rebuilding)
     try:
         from app.rag.chain import RAGPipeline
 
