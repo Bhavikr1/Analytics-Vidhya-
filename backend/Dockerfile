@@ -12,9 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY scripts ./scripts
 
-# Bake the pre-built Chroma index into the image so no rebuild is needed at boot
-COPY chroma_db ./chroma_db
-
 ENV CHROMA_DIR=/app/chroma_db
 
 EXPOSE 8000
