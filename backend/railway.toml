@@ -4,6 +4,12 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+# Mount a Railway Volume at /app/chroma_db so ChromaDB persists across
+# deployments. Create a Volume called "chroma-index" in the Railway dashboard
+# and attach it to this service at mount path /app/chroma_db.
+# First startup: ChromaDB empty → rebuilt from MongoDB (~5-15 min depending on doc count)
+# Subsequent startups: ChromaDB already populated → skips rebuild instantly

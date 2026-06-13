@@ -37,6 +37,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to connect to MongoDB — session history unavailable")
 
+    # Ensure ChromaDB is populated — rebuild from MongoDB if empty
+    try:
+        from app.rag.indexer import ensure_chroma_populated
+        await ensure_chroma_populated()
+    except Exception:
+        logger.exception("ChromaDB population check failed")
+
+    # RAG pipeline
     try:
         from app.rag.chain import RAGPipeline
 
