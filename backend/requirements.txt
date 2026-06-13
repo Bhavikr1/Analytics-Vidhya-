@@ -16,6 +16,7 @@ langchain-google-genai>=2.0
 langchain-chroma>=0.2
 chromadb>=0.5.20
 tenacity>=9.0
+numpy>=1.26
 
 # Data pipeline
 pandas>=2.2

@@ -38,6 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to connect to MongoDB — session history unavailable")
 
+    # Ensure MongoDB full-text index exists for hybrid sparse retrieval
+    try:
+        from app.rag.indexer import ensure_mongodb_text_index
+        await ensure_mongodb_text_index()
+    except Exception:
+        logger.warning("MongoDB text index setup failed — sparse retrieval disabled")
+
     # ChromaDB rebuild runs in background so healthcheck passes immediately
     async def _rebuild_chroma():
         try:

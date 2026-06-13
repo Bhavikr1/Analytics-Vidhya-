@@ -17,6 +17,22 @@ logger = logging.getLogger("ttapi")
 EMBED_BATCH = 50  # keep small — Gemini embedding API has rate limits
 
 
+async def ensure_mongodb_text_index() -> None:
+    """Create a compound text index on (title, text) for the sparse retrieval leg.
+    Safe to call repeatedly — MongoDB ignores duplicate index creation."""
+    try:
+        from app.db.mongodb import get_db
+        db = get_db()
+        await db.knowledge_base.create_index(
+            [("title", "text"), ("text", "text")],
+            name="knowledge_base_text_idx",
+            default_language="english",
+        )
+        logger.info("MongoDB text index on knowledge_base ensured.")
+    except Exception:
+        logger.warning("Could not create MongoDB text index — sparse retrieval may be unavailable", exc_info=True)
+
+
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=2, max=60))
 def _add_batch(vectorstore, texts, metadatas, ids):
     vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)

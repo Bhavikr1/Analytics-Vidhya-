@@ -143,6 +143,17 @@ async def ask_stream(
     if not session_doc:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Fetch recent conversation history before persisting the new user message
+    # (last 10 messages = up to 5 back-and-forth exchanges for LLM context)
+    history_docs = await db.messages.find(
+        {"session_id": session_id},
+        {"role": 1, "content": 1},
+    ).sort("created_at", -1).limit(10).to_list(10)
+    history = [
+        {"role": d["role"], "content": d["content"]}
+        for d in reversed(history_docs)
+    ]
+
     # Persist user message
     now = datetime.now(timezone.utc)
     await db.messages.insert_one({
@@ -170,7 +181,7 @@ async def ask_stream(
         tokens: list[str] = []
         meta: dict = {}
         try:
-            async for event in pipeline.astream(body.question):
+            async for event in pipeline.astream(body.question, history=history):
                 yield f"data: {json.dumps(event)}\n\n"
                 if event["type"] == "token":
                     tokens.append(event["content"])

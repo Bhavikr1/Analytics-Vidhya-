@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     retrieval_k: int
     max_relevance_distance: float
+    retrieval_mmr_lambda: float  # 0=max diversity, 1=max relevance; 0.6 is a good default
 
     cors_origins: str
 
