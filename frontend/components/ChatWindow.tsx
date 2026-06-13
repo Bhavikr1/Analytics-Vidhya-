@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, type ChatMessage, type Session, type Source, createSession, getSession, streamAsk } from '@/lib/api';
+import { ApiError, type ChatMessage, type Session, type Source, createSession, deleteSession, getSession, streamAsk } from '@/lib/api';
 import MessageBubble from './MessageBubble';
 
 
@@ -19,9 +19,10 @@ interface Props {
   sessionId: string | null;
   onSessionFirstMessage?: () => void;
   onNewSession?: (session: Session) => void;
+  onDeleteSession?: (id: string) => void;
 }
 
-export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSession }: Props) {
+export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSession, onDeleteSession }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [thinkingStatus, setThinkingStatus] = useState<ThinkingStatus>('idle');
@@ -67,12 +68,14 @@ export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSess
 
       // Auto-create a session if none exists yet
       let activeId = sessionId;
+      let createdThisSend = false;
       if (!activeId) {
         try {
           const newSession = await createSession();
-          justCreatedRef.current = newSession.id; // skip getSession for this new session
+          justCreatedRef.current = newSession.id;
           onNewSession?.(newSession);
           activeId = newSession.id;
+          createdThisSend = true;
         } catch {
           return;
         }
@@ -134,6 +137,12 @@ export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSess
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
+        // If we created this session just now and streaming failed, delete it so
+        // it doesn't pile up as an empty "New Chat" in the sidebar
+        if (createdThisSend && activeId) {
+          deleteSession(activeId).catch(() => {});
+          onDeleteSession?.(activeId);
+        }
         const detail =
           err instanceof ApiError ? err.message : 'Something went wrong. Please try again.';
         const errMsg: ChatMessage = {

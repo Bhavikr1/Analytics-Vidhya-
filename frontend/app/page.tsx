@@ -120,6 +120,7 @@ export default function Home() {
               sessionId={activeSessionId}
               onNewSession={handleNewSession}
               onSessionFirstMessage={handleSessionFirstMessage}
+              onDeleteSession={handleDeleteSession}
             />
           </div>
         </div>

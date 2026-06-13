@@ -95,11 +95,26 @@ async def build_chroma_from_mongodb() -> int:
     return indexed
 
 
+def _reset_chroma_collection() -> None:
+    """Delete and recreate the ChromaDB collection to clear corruption."""
+    try:
+        from app.rag.vectorstore import get_chroma_client
+        from app.core.config import get_settings
+        settings = get_settings()
+        client = get_chroma_client()
+        client.delete_collection(settings.chroma_collection)
+        logger.info("Deleted corrupted ChromaDB collection — will rebuild from scratch.")
+    except Exception:
+        logger.warning("Could not delete ChromaDB collection", exc_info=True)
+
+
 async def ensure_chroma_populated() -> None:
     """Compare ChromaDB vs MongoDB counts; rebuild if empty or incomplete (< 95%)."""
     try:
         chroma_count = get_document_count()
     except Exception:
+        logger.warning("ChromaDB collection is corrupted — resetting for fresh rebuild")
+        _reset_chroma_collection()
         chroma_count = 0
 
     try:

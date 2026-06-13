@@ -95,7 +95,11 @@ def _dense_retrieve(
 ) -> list[RetrievedDoc]:
     """Embed question, fetch candidates from ChromaDB, threshold-filter, MMR-select."""
     col = vectorstore._collection
-    count = col.count()
+    try:
+        count = col.count()
+    except Exception:
+        logger.warning("ChromaDB count failed (collection may be corrupted) — skipping dense retrieval", exc_info=True)
+        return []
     if count == 0:
         logger.warning("ChromaDB collection is empty — dense retrieval skipped")
         return []
