@@ -62,8 +62,7 @@ export default function LoginPage() {
 
         {/* Hero copy */}
         <div>
-<h1 className="text-4xl font-bold text-white leading-snug">
-            Production-grade<br />
+          <h1 className="text-4xl font-bold text-white leading-snug">
             <span className="text-emerald-400">RAG pipeline</span><br />
             for Python Q&amp;A.
           </h1>

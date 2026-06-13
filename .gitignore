@@ -11,7 +11,8 @@ __pycache__/
 
 # Data & index artifacts (regenerate via scripts)
 backend/data/
-# chroma_db is intentionally committed (1.5 MB) so Railway can COPY it into the Docker image
+# ChromaDB rebuilds automatically from MongoDB on startup — never commit it
+backend/chroma_db/
 
 # Node / Next.js
 node_modules/
