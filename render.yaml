@@ -1,0 +1,21 @@
+# Render.com blueprint — deploys the FastAPI backend from the Dockerfile.
+# The Chroma index is stored on a persistent disk; run the ingestion once
+# via a Render shell (or upload a pre-built index) after first deploy.
+services:
+  - type: web
+    name: python-qa-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false # set in the Render dashboard
+      - key: CHROMA_DIR
+        value: /var/data/chroma_db
+      - key: CORS_ORIGINS
+        value: https://YOUR-FRONTEND.vercel.app,http://localhost:3000
+    disk:
+      name: chroma-index
+      mountPath: /var/data
+      sizeGB: 1
