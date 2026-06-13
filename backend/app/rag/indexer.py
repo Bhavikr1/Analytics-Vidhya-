@@ -96,17 +96,35 @@ async def build_chroma_from_mongodb() -> int:
 
 
 async def ensure_chroma_populated() -> None:
-    """Check ChromaDB document count; rebuild from MongoDB if empty."""
+    """Compare ChromaDB vs MongoDB counts; rebuild if empty or incomplete (< 95%)."""
     try:
-        count = get_document_count()
+        chroma_count = get_document_count()
     except Exception:
-        count = 0
+        chroma_count = 0
 
-    if count > 0:
-        logger.info("ChromaDB already has %d documents — skipping rebuild.", count)
+    try:
+        from app.db.mongodb import get_db
+        db = get_db()
+        mongo_count = await db.knowledge_base.count_documents({})
+    except Exception:
+        mongo_count = 0
+
+    # Skip only when ChromaDB is at least 95% of MongoDB
+    if chroma_count > 0 and (mongo_count == 0 or chroma_count >= int(mongo_count * 0.95)):
+        logger.info(
+            "ChromaDB has %d/%d documents — index is complete, skipping rebuild.",
+            chroma_count, mongo_count,
+        )
         return
 
-    logger.info("ChromaDB is empty — starting rebuild from MongoDB ...")
+    if chroma_count > 0:
+        logger.info(
+            "ChromaDB has %d/%d documents — index is incomplete, rebuilding ...",
+            chroma_count, mongo_count,
+        )
+    else:
+        logger.info("ChromaDB is empty — starting rebuild from MongoDB ...")
+
     try:
         indexed = await build_chroma_from_mongodb()
         if indexed == 0:
