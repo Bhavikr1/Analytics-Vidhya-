@@ -51,55 +51,22 @@ export default function LoginPage() {
       {/* ── Left branding panel ───────────────────────────── */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-zinc-950 px-12 py-10">
         {/* Logo */}
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🐍</span>
-          <span className="text-lg font-semibold text-white tracking-tight">
-            Python Q&amp;A Assistant
+        <div>
+          <span className="text-sm font-semibold uppercase tracking-widest text-zinc-400">
+            Analytics Vidhya
           </span>
+          <p className="mt-1 text-lg font-bold text-white tracking-tight">
+            Python Q&amp;A Assistant
+          </p>
         </div>
 
         {/* Hero copy */}
         <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-400">
-            AI Engineer Assessment — Analytics Vidhya
-          </p>
-          <h1 className="text-4xl font-bold text-white leading-snug">
+<h1 className="text-4xl font-bold text-white leading-snug">
             Production-grade<br />
             <span className="text-emerald-400">RAG pipeline</span><br />
             for Python Q&amp;A.
           </h1>
-          <p className="mt-5 text-sm text-zinc-400 max-w-sm leading-relaxed">
-            A full-stack AI application built to demonstrate end-to-end
-            retrieval-augmented generation — from vector search and LLM
-            orchestration to a streaming, session-aware chat interface.
-          </p>
-
-          {/* Architecture highlights */}
-          <ul className="mt-6 space-y-2.5">
-            {[
-              { icon: '⚡', text: 'Streaming SSE responses via Gemini 2.5 Flash' },
-              { icon: '🔍', text: 'Semantic search over Stack Overflow corpus (Chroma + embeddings)' },
-              { icon: '🗂️', text: 'Persistent chat sessions backed by MongoDB' },
-              { icon: '🔐', text: 'JWT authentication with protected routes' },
-            ].map(({ icon, text }) => (
-              <li key={text} className="flex items-start gap-2.5 text-sm text-zinc-400">
-                <span className="mt-0.5 shrink-0">{icon}</span>
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
-
-          {/* Stack pills */}
-          <div className="mt-7 flex flex-wrap gap-2">
-            {['FastAPI', 'Next.js 15', 'LangChain', 'Gemini 2.5', 'MongoDB', 'ChromaDB'].map((t) => (
-              <span
-                key={t}
-                className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-400"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
         </div>
 
         {/* Footer */}
@@ -111,9 +78,9 @@ export default function LoginPage() {
       {/* ── Right form panel ──────────────────────────────── */}
       <div className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-6 py-12">
         {/* Mobile logo */}
-        <div className="mb-8 flex items-center gap-2 lg:hidden">
-          <span className="text-3xl">🐍</span>
-          <span className="text-lg font-semibold text-zinc-900">Python Q&amp;A Assistant</span>
+        <div className="mb-8 lg:hidden">
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Analytics Vidhya</p>
+          <p className="mt-1 text-lg font-bold text-zinc-900">Python Q&amp;A Assistant</p>
         </div>
 
         {/* Floating card */}
