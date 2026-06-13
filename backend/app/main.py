@@ -1,33 +1,57 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.routes import router
+from app.api import auth, routes, sessions
 from app.core.config import get_settings
+from app.db.mongodb import close_db, connect_db
 
-logging.basicConfig(level=logging.INFO)
+settings = get_settings()
+IS_PROD = settings.environment.lower() == "production"
+
+logging.basicConfig(level=logging.WARNING if IS_PROD else logging.INFO)
 logger = logging.getLogger("ttapi")
+
+
+# ── Security headers (production only) ────────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if IS_PROD:
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        return response
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build the RAG pipeline once at startup; never crash the app if it
-    fails (health endpoint stays up and reports degraded state)."""
+    try:
+        await connect_db()
+    except Exception:
+        logger.exception("Failed to connect to MongoDB — session history unavailable")
+
     try:
         from app.rag.chain import RAGPipeline
 
         app.state.pipeline = RAGPipeline()
         logger.info("RAG pipeline initialised")
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Failed to initialise RAG pipeline")
         app.state.pipeline = None
+
     yield
+
+    await close_db()
 
 
 def create_app() -> FastAPI:
-    settings = get_settings()
     app = FastAPI(
         title="Python Programming Q&A Assistant",
         description=(
@@ -36,14 +60,24 @@ def create_app() -> FastAPI:
         ),
         version="1.0.0",
         lifespan=lifespan,
+        # Swagger / ReDoc / OpenAPI schema are blocked in production
+        docs_url=None if IS_PROD else "/docs",
+        redoc_url=None if IS_PROD else "/redoc",
+        openapi_url=None if IS_PROD else "/openapi.json",
     )
+
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=IS_PROD,   # only send credentials header in production
+        allow_methods=["GET", "POST", "PATCH", "DELETE"] if IS_PROD else ["*"],
+        allow_headers=["Authorization", "Content-Type"] if IS_PROD else ["*"],
     )
-    app.include_router(router)
+
+    app.include_router(auth.router)
+    app.include_router(routes.router)
+    app.include_router(sessions.router)
     return app
 
 

@@ -2,7 +2,7 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# lxml needs libxml2/libxslt at runtime; build tools removed after install
+# lxml needs libxml2/libxslt at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2 libxslt1.1 && rm -rf /var/lib/apt/lists/*
 
@@ -12,9 +12,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY scripts ./scripts
 
-# The Chroma index must be provided at /app/chroma_db — either baked in
-# (COPY chroma_db ./chroma_db), mounted as a volume, or downloaded at boot.
+# Bake the pre-built Chroma index into the image so no rebuild is needed at boot
+COPY chroma_db ./chroma_db
+
 ENV CHROMA_DIR=/app/chroma_db
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+
+# Use shell form so Railway's $PORT variable is expanded at runtime
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2

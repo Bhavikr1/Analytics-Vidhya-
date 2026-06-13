@@ -13,18 +13,28 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    google_api_key: str = ""
-    generation_model: str = "gemini-2.5-flash"
-    embedding_model: str = "models/gemini-embedding-001"
+    environment: str  # "development" | "production"
 
-    chroma_dir: str = str(BACKEND_DIR / "chroma_db")
-    chroma_collection: str = "python_qa"
+    google_api_key: str
+    generation_model: str
+    embedding_model: str
 
-    retrieval_k: int = 5
-    # Cosine distance above this is treated as "no relevant context found".
-    max_relevance_distance: float = 0.60
+    chroma_dir: str
+    chroma_collection: str
 
-    cors_origins: str = "http://localhost:3000"
+    retrieval_k: int
+    max_relevance_distance: float
+
+    cors_origins: str
+
+    mongodb_uri: str
+    mongodb_db_name: str
+
+    auth_username: str
+    auth_password: str
+    jwt_secret_key: str
+    jwt_algorithm: str
+    jwt_access_token_expire_minutes: int
 
     @property
     def cors_origin_list(self) -> list[str]:

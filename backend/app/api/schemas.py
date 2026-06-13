@@ -46,3 +46,67 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# Session / chat-history schemas
+class SessionCreate(BaseModel):
+    title: str = "New Chat"
+
+
+class SessionUpdateTitle(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class SessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
+
+
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources: list[Source] | None = None
+    grounded: bool | None = None
+    latency_ms: int | None = None
+    model: str | None = None
+    created_at: datetime
+
+
+class SessionWithMessages(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[MessageResponse]
+
+
+# Authentication schemas
+class LoginRequest(BaseModel):
+    username: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Username for authentication",
+        examples=["Analytics Vidhya"]
+    )
+    password: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Password for authentication"
+    )
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int = Field(description="Token expiration time in seconds")
+
+
+class TokenPayload(BaseModel):
+    username: str
+    exp: int

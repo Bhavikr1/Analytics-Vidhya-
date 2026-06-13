@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.schemas import (
     AskRequest,
@@ -8,6 +8,7 @@ from app.api.schemas import (
     HealthResponse,
     VectorDBHealth,
 )
+from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.rag.vectorstore import get_document_count
 
@@ -37,8 +38,15 @@ async def health() -> HealthResponse:
     "/ask",
     response_model=AskResponse,
     responses={503: {"description": "RAG pipeline unavailable"}},
+    dependencies=[Depends(get_current_user)],
+    summary="Ask a Python programming question (Authentication required)",
+    description="Submit a Python programming question and get an AI-generated answer based on Stack Overflow data. Requires valid JWT token."
 )
-async def ask(request: Request, body: AskRequest) -> AskResponse:
+async def ask(
+    request: Request,
+    body: AskRequest,
+    current_user: str = Depends(get_current_user)
+) -> AskResponse:
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None:
         raise HTTPException(

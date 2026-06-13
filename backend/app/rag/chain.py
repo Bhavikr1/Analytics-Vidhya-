@@ -84,6 +84,44 @@ class RAGPipeline:
         self.chain = prompt | llm | StrOutputParser()
         self.model_name = settings.generation_model
 
+    async def astream(self, question: str):
+        """Yield SSE event dicts: thinking → token* → metadata → done."""
+        started = time.perf_counter()
+
+        yield {"type": "thinking", "status": "retrieving"}
+        hits = retrieve(self.vectorstore, question)
+        docs = relevant_only(hits)
+
+        if not docs:
+            yield {"type": "thinking", "status": "generating"}
+            for char in OUT_OF_SCOPE_ANSWER:
+                yield {"type": "token", "content": char}
+            yield {
+                "type": "metadata",
+                "sources": [],
+                "grounded": False,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "model": self.model_name,
+            }
+            yield {"type": "done"}
+            return
+
+        sources = make_sources(docs)
+        context = format_context(docs)
+
+        yield {"type": "thinking", "status": "generating"}
+        async for chunk in self.chain.astream({"context": context, "question": question}):
+            yield {"type": "token", "content": chunk}
+
+        yield {
+            "type": "metadata",
+            "sources": sources,
+            "grounded": True,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "model": self.model_name,
+        }
+        yield {"type": "done"}
+
     async def ask(self, question: str) -> dict[str, Any]:
         started = time.perf_counter()
         hits = retrieve(self.vectorstore, question)
