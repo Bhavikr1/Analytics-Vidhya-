@@ -29,11 +29,18 @@ export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSess
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Tracks sessions we just created so we skip the getSession fetch for them
+  // (the session is empty at that point and would wipe the optimistic user message)
+  const justCreatedRef = useRef<string | null>(null);
 
-  // Load messages when session changes
+  // Load messages when session changes — skip for sessions we just created
   useEffect(() => {
     if (!sessionId) {
       setMessages([]);
+      return;
+    }
+    if (justCreatedRef.current === sessionId) {
+      justCreatedRef.current = null;
       return;
     }
     getSession(sessionId)
@@ -63,6 +70,7 @@ export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSess
       if (!activeId) {
         try {
           const newSession = await createSession();
+          justCreatedRef.current = newSession.id; // skip getSession for this new session
           onNewSession?.(newSession);
           activeId = newSession.id;
         } catch {
