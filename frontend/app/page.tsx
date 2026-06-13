@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Sidebar from '@/components/Sidebar';
 import ChatWindow from '@/components/ChatWindow';
-import HealthBadge from '@/components/HealthBadge';
 import {
   type Session,
   createSession,
@@ -113,7 +112,6 @@ export default function Home() {
               <span className="text-sm font-semibold text-[#ececec]">Python Q&A Assistant</span>
             </div>
 
-            <HealthBadge />
           </header>
 
           {/* Chat — always rendered; auto-creates a session on first send */}

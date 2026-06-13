@@ -4,12 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, type ChatMessage, type Session, type Source, createSession, getSession, streamAsk } from '@/lib/api';
 import MessageBubble from './MessageBubble';
 
-const SUGGESTIONS = [
-  'How do I merge two dictionaries in Python?',
-  "What's the difference between a list and a tuple?",
-  'How does pandas groupby aggregation work?',
-  "Why am I getting 'NoneType' object is not subscriptable?",
-];
 
 type ThinkingStatus = 'idle' | 'retrieving' | 'generating' | 'streaming';
 
@@ -157,26 +151,13 @@ export default function ChatWindow({ sessionId, onSessionFirstMessage, onNewSess
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 space-y-2">
           {messages.length === 0 && isIdle && (
-            <div className="flex flex-col items-center justify-center pt-16 text-center">
-              <div className="text-5xl mb-4">🐍</div>
-              <h2 className="text-2xl font-semibold text-[#ececec] mb-2">
-                Ask me anything about Python
+            <div className="flex flex-col items-center justify-center pt-20 text-center">
+              <h2 className="text-2xl font-semibold text-[#ececec] mb-3">
+                Python Q&amp;A Assistant
               </h2>
-              <p className="text-sm text-[#ececec]/50 max-w-md mb-8">
-                Answers are grounded in real Stack Overflow questions and answers — with sources
-                you can verify.
+              <p className="text-sm text-[#ececec]/40 max-w-sm">
+                Grounded in 25,000 Stack Overflow Q&amp;A pairs · Sources cited with every answer
               </p>
-              <div className="grid gap-2 sm:grid-cols-2 w-full max-w-xl">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => send(s)}
-                    className="rounded-xl border border-white/10 bg-[#2f2f2f] px-4 py-3 text-left text-sm text-[#ececec]/70 transition hover:border-white/20 hover:bg-[#3a3a3a] hover:text-white"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
