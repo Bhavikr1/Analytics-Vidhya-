@@ -3,8 +3,10 @@
 Called automatically at startup when ChromaDB is empty.
 """
 
+import asyncio
 import logging
 import time
+from functools import partial
 
 from langchain_core.documents import Document
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -75,7 +77,10 @@ async def build_chroma_from_mongodb() -> int:
         batch_ids.append(doc["_id"])
 
         if len(batch_texts) >= EMBED_BATCH:
-            _add_batch(vectorstore, batch_texts, batch_meta, batch_ids)
+            # Run blocking embed+insert in thread so event loop stays free for requests
+            await asyncio.get_event_loop().run_in_executor(
+                None, partial(_add_batch, vectorstore, batch_texts, batch_meta, batch_ids)
+            )
             indexed += len(batch_texts)
             elapsed = time.perf_counter() - started
             rate = indexed / max(elapsed, 1)
@@ -88,7 +93,9 @@ async def build_chroma_from_mongodb() -> int:
 
     # flush remainder
     if batch_texts:
-        _add_batch(vectorstore, batch_texts, batch_meta, batch_ids)
+        await asyncio.get_event_loop().run_in_executor(
+            None, partial(_add_batch, vectorstore, batch_texts, batch_meta, batch_ids)
+        )
         indexed += len(batch_texts)
 
     logger.info("ChromaDB rebuild complete: %d documents indexed.", indexed)
