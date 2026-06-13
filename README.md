@@ -1,132 +1,267 @@
-# 🐍 Python Programming Q&A Assistant
+# Python Programming Q&A Assistant
 
-An AI-powered question-answering system for data science learners, grounded in the
-**Stack Overflow Python Q&A dataset**. Ask any Python question and get an accurate,
-cited answer — backed by real, high-scoring Stack Overflow answers, never hallucinated.
+An AI-powered question-answering system for Python developers, grounded in a curated corpus of 25,000 high-scoring Stack Overflow Q&A pairs. Ask any Python question and get a streamed, cited answer — with full session memory and a hybrid retrieval pipeline for accuracy.
 
-Built for the Analytics Vidhya AI Engineer assessment (Round 1).
+Built for the **Analytics Vidhya AI Engineer Assessment**.
 
-> **Live demo:** _<!-- add deployed URL here -->_
+> **Live demo:** _Add your deployed URL here_
+
+---
 
 ## What it does
 
-- **RAG pipeline** (LangChain) — retrieves the most relevant Stack Overflow Q&A pairs
-  from a Chroma vector index of ~25,000 top-scoring Python questions, then generates a
-  grounded answer with **Gemini 2.0 Flash**, citing sources as `[1]`, `[2]`.
-- **FastAPI backend** — `POST /ask` and `GET /health`, fully async, OpenAPI docs at `/docs`.
-- **Next.js + TypeScript frontend** — chat UI with markdown rendering, syntax-highlighted
-  code blocks, expandable source citations linking back to Stack Overflow, and a live
-  API-health badge.
-- **Honest refusals** — if retrieval finds nothing relevant (e.g. a non-Python question),
-  the API returns `grounded: false` with a polite refusal instead of a hallucination.
+- **Hybrid RAG pipeline** — combines dense semantic search (ChromaDB + Gemini embeddings) with sparse keyword search (MongoDB full-text) and fuses results via Reciprocal Rank Fusion for higher retrieval accuracy than either method alone
+- **MMR diversity** — Maximal Marginal Relevance selects a diverse set of Stack Overflow references so the LLM synthesises from multiple angles, not near-duplicate results
+- **Real-time streaming** — answers stream token-by-token via Server-Sent Events; the first token arrives in under a second
+- **Session memory** — conversation history is persisted to MongoDB and injected into every LLM call so follow-up questions work naturally within a session
+- **Grounded fallback** — when retrieval finds nothing relevant, the LLM answers from its own Python expertise and the response is clearly marked as "General Knowledge" rather than returning a robotic refusal
+- **JWT authentication** — protected routes with stateless token verification; no server-side session state
+- **Production-grade security** — HSTS, CSP headers, CORS lockdown, Swagger blocked in production
+
+---
 
 ## Architecture
 
 ```
-                        ┌──────────────────────────────────────────┐
-                        │           OFFLINE INGESTION              │
-  Kaggle dataset ──────►│ filter score ≥5 ► pair best answer       │
-  (607k Q / 987k A)     │ ► clean HTML (keep code) ► top 25k docs  │
-                        │ ► embed (text-embedding-004, batched)    │
-                        └───────────────────┬──────────────────────┘
-                                            ▼
-┌──────────────┐   POST /ask   ┌─────────────────────┐    ┌─────────────────┐
-│   Next.js    │──────────────►│      FastAPI        │───►│  ChromaDB       │
-│  chat UI     │◄──────────────│  retrieve top-5     │◄───│  (cosine, 25k)  │
-│  (Vercel)    │   answer +    │  ► relevance gate   │    └─────────────────┘
-└──────────────┘   sources     │  ► grounded prompt  │    ┌─────────────────┐
-                               │  ► cite sources     │───►│ Gemini 2.0 Flash│
-                               └─────────────────────┘    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  ONE-TIME DATA PIPELINE (run locally)                                   │
+│                                                                         │
+│  Kaggle CSV (607k Q / 987k A)                                           │
+│    → filter (score ≥ 5) → clean HTML → top 25k Q&A pairs               │
+│    → python scripts/ingest_to_mongodb.py                                │
+│    → MongoDB Atlas  knowledge_base  collection (25k docs)               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                           Cold start
+                     MongoDB ──────────────► ChromaDB
+                    (25k docs)   rebuild      (vector index)
+                                 (background
+                                  async task)
+
+┌──────────────┐  SSE stream   ┌──────────────────────────────────────────┐
+│  Next.js 15  │◄─────────────►│  FastAPI  (Railway · Docker)             │
+│  (Vercel)    │  JWT auth     │                                          │
+│              │               │  POST /sessions/{id}/ask                 │
+│  - Sidebar   │               │    1. Fetch session history (MongoDB)    │
+│  - Streaming │               │    2. Dense retrieval:                   │
+│  - Markdown  │               │       embed query → ChromaDB cosine      │
+│  - Sources   │               │       → threshold filter                 │
+└──────────────┘               │       → MMR diverse selection            │
+                               │    3. Sparse retrieval:                  │
+                               │       MongoDB $text search (BM25-like)   │
+                               │    4. Reciprocal Rank Fusion             │
+                               │    5. LLM: Gemini 2.5 Flash (streaming)  │
+                               │    6. Save message to MongoDB            │
+                               │                                          │
+                               │  MongoDB Atlas                           │
+                               │    - sessions + messages (chat history)  │
+                               │    - knowledge_base (25k docs)           │
+                               └──────────────────────────────────────────┘
 ```
 
-Details in [`docs/architecture.md`](docs/architecture.md). Design decisions and the
-100+ concurrent-user scaling plan are in the slide deck: [`docs/slides.md`](docs/slides.md).
+---
 
-## Quickstart
+## Tech Stack
+
+| Layer | Technology | Reason |
+|---|---|---|
+| LLM | Gemini 2.5 Flash | Fast streaming, low latency, strong Python reasoning |
+| Embeddings | Gemini Embedding-001 (768-dim) | Same provider, no extra API key |
+| Vector DB | ChromaDB (cosine) | Lightweight, runs in container, persists to Railway Volume |
+| Document DB | MongoDB Atlas (Motor async) | Persistent knowledge base + chat history; built-in text search for sparse leg |
+| RAG framework | LangChain Core | Chain composition, prompt templates, message history types |
+| Backend | FastAPI + Uvicorn | Native async, SSE streaming, automatic OpenAPI schema |
+| Frontend | Next.js 15 + TypeScript | App Router, streaming-friendly, Vercel deploy |
+| Styling | Tailwind CSS | Utility-first, dark theme |
+| Auth | JWT (python-jose) | Stateless — any backend instance handles any request |
+| Hosting | Railway (backend) · Vercel (frontend) | Docker image deploy; Railway Volume for ChromaDB persistence |
+
+---
+
+## Retrieval Pipeline Detail
+
+```
+Question
+   │
+   ├── Dense leg ──────────────────────────────────────────────────────┐
+   │   Gemini embed → ChromaDB cosine search (fetch 4k candidates)    │
+   │   → threshold filter (similarity ≥ 0.35)                         │
+   │   → MMR selection (λ=0.6, k=8 diverse docs)                      │
+   │                                                                   ▼
+   │                                              Reciprocal Rank Fusion
+   │                                              (RRF, k_const=60)
+   │                                                                   ▲
+   └── Sparse leg ─────────────────────────────────────────────────────┘
+       MongoDB $text search → textScore ranking → top-8 keyword matches
+
+                  └── Top-k fused results → LLM context
+```
+
+**Why hybrid?** Vector search catches semantic meaning but misses exact terms (function names, error types). Keyword search catches exact terms but misses paraphrased questions. RRF fusion ranks documents that appear highly in both lists significantly higher — giving the best of both approaches.
+
+---
+
+## File Structure
+
+```
+python-qa-assistant/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── auth.py           Login endpoint, JWT token issue
+│   │   │   ├── routes.py         Health check, non-streaming ask
+│   │   │   ├── sessions.py       Session CRUD + streaming SSE ask endpoint
+│   │   │   └── schemas.py        Pydantic request/response models
+│   │   ├── core/
+│   │   │   ├── config.py         All settings from .env (zero hardcoded values)
+│   │   │   └── auth.py           JWT verification dependency
+│   │   ├── db/
+│   │   │   └── mongodb.py        Async Motor connection manager
+│   │   ├── rag/
+│   │   │   ├── chain.py          RAGPipeline — grounded chain + fallback chain
+│   │   │   ├── retriever.py      Hybrid retrieval (dense MMR + sparse + RRF)
+│   │   │   ├── vectorstore.py    ChromaDB client
+│   │   │   ├── embeddings.py     Gemini embedding function
+│   │   │   └── indexer.py        MongoDB → ChromaDB rebuild + text index setup
+│   │   └── main.py               App factory, security middleware, lifespan
+│   ├── scripts/
+│   │   └── ingest_to_mongodb.py  One-time corpus upload to MongoDB
+│   ├── Dockerfile
+│   ├── railway.toml
+│   └── requirements.txt
+│
+└── frontend/
+    ├── app/
+    │   ├── page.tsx              Main layout — sidebar + chat window
+    │   └── login/page.tsx        Login page (split-screen)
+    ├── components/
+    │   ├── ChatWindow.tsx        SSE streaming handler, message state
+    │   ├── Sidebar.tsx           Session list — grouped by date, rename/delete
+    │   ├── MessageBubble.tsx     Markdown, syntax highlight, source citations, metadata bar
+    │   └── SourceList.tsx        Expandable Stack Overflow source links
+    └── lib/
+        ├── api.ts                All API calls + streamAsk async generator
+        └── auth.ts               JWT storage, expiry check, logout
+```
+
+---
+
+## Local Setup
 
 ### Prerequisites
 
-- Python 3.11+ (3.13 recommended), Node 20+
-- A [Google AI Studio API key](https://aistudio.google.com/apikey) (free tier works)
-- Kaggle credentials for the dataset download (or download the CSVs manually)
+- Python 3.11+ · Node 20+
+- [Google AI Studio API key](https://aistudio.google.com/apikey) (free tier works)
+- MongoDB Atlas cluster (free M0 tier works)
 
-### 1. Backend setup
+### 1. Backend
 
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-cp ../.env.example .env          # then fill in GOOGLE_API_KEY
+cp .env.example .env   # fill in the values below
 ```
 
-### 2. Build the knowledge base (one-time, ~30–45 min)
+**`backend/.env` values required:**
+
+```env
+ENVIRONMENT=development
+
+GOOGLE_API_KEY=your_key_here
+GENERATION_MODEL=gemini-2.5-flash
+EMBEDDING_MODEL=models/gemini-embedding-001
+
+CHROMA_DIR=./chroma_db
+CHROMA_COLLECTION=python_qa
+
+RETRIEVAL_K=8
+MAX_RELEVANCE_DISTANCE=0.65
+RETRIEVAL_MMR_LAMBDA=0.6
+
+CORS_ORIGINS=http://localhost:3000
+
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGODB_DB_NAME=your_db_name
+
+AUTH_USERNAME=your_username
+AUTH_PASSWORD=your_password
+JWT_SECRET_KEY=change-this-to-a-long-random-string
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
+```
+
+### 2. Build the knowledge base (one-time)
 
 ```bash
-# Download the Kaggle dataset (~2 GB) — needs ~/.kaggle/kaggle.json
-python scripts/download_data.py
+# Download Kaggle dataset and process it into corpus.parquet first
+python scripts/ingest.py --corpus-only   # if not already done
 
-# Filter → clean → embed ~25k top Q&A pairs into ./chroma_db
-python scripts/ingest.py
+# Upload to MongoDB (takes ~2 min for 25k docs)
+python scripts/ingest_to_mongodb.py
 
-# Quick smoke-test index instead (500 docs, ~2 min):
-python scripts/ingest.py --max-docs 500
+# Optional: smaller subset for testing
+python scripts/ingest_to_mongodb.py --max-docs 1000
 ```
 
-The ingestion is **resumable** — if it is interrupted (rate limits, network), re-running
-it skips everything already embedded.
+ChromaDB is **not** built locally — it rebuilds automatically from MongoDB when the backend starts. On first run this takes 10-15 minutes in the background; the app serves requests the whole time.
 
-### 3. Run the API
+### 3. Run the backend
 
 ```bash
 uvicorn app.main:app --port 8000 --reload
 ```
 
-- Interactive docs: http://localhost:8000/docs
-- Health check: `curl localhost:8000/health`
+Swagger UI (development only): http://localhost:8000/docs
 
 ### 4. Run the frontend
 
 ```bash
-cd ../frontend
+cd frontend
 npm install
 echo 'NEXT_PUBLIC_API_URL=http://localhost:8000' > .env.local
-npm run dev          # http://localhost:3000
+npm run dev   # http://localhost:3000
 ```
 
-## API reference
+---
 
-### `POST /ask`
+## API Reference
+
+All endpoints except `/health` require `Authorization: Bearer <token>`.
+
+### `POST /auth/login-json`
 
 ```bash
-curl -X POST localhost:8000/ask \
+curl -X POST localhost:8000/auth/login-json \
   -H 'Content-Type: application/json' \
-  -d '{"question": "How do I merge two dictionaries in Python?"}'
+  -d '{"username": "your_user", "password": "your_pass"}'
 ```
 
 ```json
-{
-  "answer": "You can merge two dictionaries with the `|` operator… [1]",
-  "sources": [
-    {
-      "title": "How do I merge two dictionaries in a single expression?",
-      "link": "https://stackoverflow.com/questions/38987",
-      "question_score": 6543,
-      "answer_score": 5821,
-      "snippet": "# How do I merge two dictionaries…"
-    }
-  ],
-  "grounded": true,
-  "latency_ms": 1843,
-  "model": "gemini-2.0-flash"
-}
+{ "access_token": "eyJ...", "token_type": "bearer", "expires_in": 3600 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `grounded` | `false` when nothing relevant was retrieved and the assistant declined to answer |
-| `sources` | Stack Overflow posts used as context, with scores and links |
-| Errors | `422` invalid input · `502` LLM failure · `503` pipeline not initialised |
+### `POST /sessions/{id}/ask` — streaming
+
+```bash
+curl -X POST localhost:8000/sessions/{id}/ask \
+  -H 'Authorization: Bearer eyJ...' \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "How do I merge two dictionaries in Python?"}' \
+  --no-buffer
+```
+
+Streams Server-Sent Events:
+
+```
+data: {"type": "thinking", "status": "retrieving"}
+data: {"type": "thinking", "status": "generating"}
+data: {"type": "token", "content": "You can merge "}
+data: {"type": "token", "content": "two dictionaries..."}
+data: {"type": "metadata", "sources": [...], "grounded": true, "latency_ms": 2341, "model": "gemini-2.5-flash"}
+data: {"type": "done"}
+```
 
 ### `GET /health`
 
@@ -134,300 +269,79 @@ curl -X POST localhost:8000/ask \
 {
   "status": "ok",
   "vector_db": { "connected": true, "document_count": 25000 },
-  "model": "gemini-2.0-flash",
-  "timestamp": "2026-06-11T12:00:00Z"
+  "model": "gemini-2.5-flash",
+  "timestamp": "2026-06-13T10:00:00Z"
 }
 ```
 
-## Testing
-
-```bash
-# Unit tests — run fully offline (LLM + embeddings mocked), 16 tests
-cd backend && .venv/bin/python -m pytest -v
-
-# Integration test suite — 12 diverse queries against a running API,
-# writes docs/test_results.md with answers, sources, latency, observations
-python scripts/run_test_queries.py --base-url http://localhost:8000
-```
-
-Documented results: [`docs/test_results.md`](docs/test_results.md). Coverage includes
-basics, debugging/error-message queries, pandas questions, out-of-scope refusal,
-vague one-word queries, and a harmful-request probe.
-
-## Key design decisions
-
-| Decision | Why |
+| Status code | Meaning |
 |---|---|
-| Top ~25k Q&A pairs (question score ≥ 5, answer score ≥ 2) | Quality over volume: high-score pairs cover the overwhelming majority of real learner questions; keeps embedding cost ~$0 (free tier) and the index small enough for free-tier hosting |
-| One Q&A pair = one chunk | Q&A pairs are natural retrieval units; splitting mid-answer destroys the code context |
-| HTML → markdown preserving `<code>` as fenced blocks | Code is the core signal in programming Q&A; naive HTML stripping mangles it |
-| Cosine-distance relevance gate (no extra LLM call) | Out-of-scope detection for free — one threshold, zero added latency |
-| Role of the LLM is *synthesis only* | The system prompt forbids answering beyond the retrieved context — grounding is enforced, not requested |
-| Lifespan-loaded pipeline, never crashes the app | `/health` stays up and reports degraded state even if the LLM/key is misconfigured |
+| `200` | Success |
+| `401` | Missing or expired JWT |
+| `422` | Validation error (question too short/long) |
+| `503` | RAG pipeline not yet initialised |
+
+---
 
 ## Deployment
 
-**Backend → Render** (free tier): `render.yaml` blueprint included.
-
-1. Push the repo, create a Render Blueprint from it.
-2. Set `GOOGLE_API_KEY` in the dashboard.
-3. Build the index onto the persistent disk: open a Render shell and run
-   `python scripts/download_data.py && python scripts/ingest.py`
-   (or upload a locally built `chroma_db/` to the disk).
-
-**Frontend → Vercel:** import `frontend/`, set `NEXT_PUBLIC_API_URL` to the Render URL,
-and add the Vercel domain to `CORS_ORIGINS` on the backend.
-
-**Docker (local):**
+### Backend — Railway (Docker image)
 
 ```bash
-docker compose up --build    # serves the API with your local chroma_db mounted
+cd backend
+railway login
+railway link          # link to your Railway project
+railway up --detach   # build and deploy Docker image
 ```
 
-## Troubleshooting
+**Railway environment variables to set:**
 
-### Common Issues & Solutions
+All variables from `backend/.env` above, plus:
 
-#### 1. **404 NOT_FOUND - Embedding Model Errors**
-
-**Error:**
-```
-models/text-embedding-004 is not found for API version v1beta
-```
-
-**Root Cause:** Using outdated embedding model names that don't exist in current Google GenAI SDK.
-
-**Solution:**
-Update your `.env` and `app/core/config.py`:
-
-```bash
-# .env
-EMBEDDING_MODEL=models/gemini-embedding-001
-
-# app/core/config.py
-embedding_model: str = "models/gemini-embedding-001"
+```env
+ENVIRONMENT=production
+CORS_ORIGINS=https://your-frontend.vercel.app
+PORT=8080   # Railway injects this automatically
 ```
 
-**Available Embedding Models (2025):**
-- `models/gemini-embedding-001` (recommended for text)
-- `models/gemini-embedding-2-preview` (latest multimodal)
-- `models/gemini-embedding-2` (stable multimodal)
+**Railway Volume:** Create a volume named `chroma-index` and mount it at `/app/chroma_db` in the Railway dashboard. This persists the ChromaDB index across deployments so it only rebuilds once.
 
-#### 2. **404 NOT_FOUND - Generation Model Errors**
+### Frontend — Vercel
 
-**Error:**
-```
-models/gemini-2.0-pro is not found for API version v1beta
-```
+Import the `frontend/` directory into Vercel and set:
 
-**Solution:**
-Update to available generation models:
-
-```bash
-# .env
-GENERATION_MODEL=gemini-2.5-flash
-
-# app/core/config.py
-generation_model: str = "gemini-2.5-flash"
-```
-
-**Available Generation Models:**
-- `gemini-2.5-flash` (recommended - fast & cost-effective)
-- `gemini-2.5-pro` (higher quality, slower)
-- `gemini-3.5-flash` (latest)
-
-#### 3. **429 RESOURCE_EXHAUSTED - Quota Issues**
-
-**Error:**
-```
-You exceeded your current quota, please check your plan and billing details
-```
-
-**Solutions:**
-1. **Wait for quota reset** (daily limits reset at midnight UTC)
-2. **Check usage:** https://ai.dev/rate-limit
-3. **Use different API key** with available quota
-4. **Create minimal test data** (for development):
-
-```python
-# Create test collection with sample data
-import chromadb
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
-
-test_data = [
-    'How do I merge two dictionaries in Python? Use dict1.update(dict2) or {**dict1, **dict2}',
-    'What is list comprehension? It is [expr for item in iterable]',
-    'How to handle exceptions? Use try-except blocks'
-]
-
-# Add to vector database for testing
-```
-
-#### 4. **Package Compatibility Issues**
-
-**Error:**
-```
-Collection [uuid] does not exist
-```
-
-**Solution:**
-Restart your server to pick up database changes:
-```bash
-# Stop server (Ctrl+C)
-uvicorn app.main:app --reload
-```
-
-**For clean restart:**
-```bash
-# Remove old database and recreate
-rm -rf chroma_db
-python scripts/ingest.py
-```
-
-#### 5. **"I couldn't find anything relevant" Responses**
-
-**Symptoms:**
-API always returns generic fallback message instead of real answers.
-
-**Root Causes & Solutions:**
-
-1. **Empty Vector Database:**
-   ```bash
-   # Check database status
-   curl localhost:8000/health
-   # Should show: "document_count": > 0
-
-   # If 0, rebuild database
-   python scripts/download_data.py
-   python scripts/ingest.py
-   ```
-
-2. **Quota Exhaustion During Ingestion:**
-   - Check logs for 429 errors
-   - Use test data (see quota section above)
-   - Wait for quota reset
-
-3. **Server Cache Issues:**
-   - Restart server after database changes
-   - Clear browser cache
-
-#### 6. **SDK Version Conflicts**
-
-**Check Current Versions:**
-```bash
-pip list | grep -E "(google|genai|langchain)"
-```
-
-**Expected Versions (Working Configuration):**
-```
-google-genai                  2.8.0+
-langchain-google-genai        4.2.5+
-langchain-core                1.4.7+
-```
-
-**If Conflicts Exist:**
-```bash
-# Clean installation
-pip uninstall google-generativeai google-ai-generativelanguage  # Remove old SDKs
-pip install -r requirements.txt --upgrade
-```
-
-### Quick Diagnostic Commands
-
-```bash
-# 1. Test API connectivity
-curl localhost:8000/health
-
-# 2. Check available models
-python -c "
-import google.genai as genai
-client = genai.Client(api_key='YOUR_API_KEY')
-models = client.models.list()
-for model in models:
-    if 'gemini' in model.name.lower():
-        print(model.name)
-"
-
-# 3. Test embedding functionality
-python -c "
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from app.core.config import get_settings
-settings = get_settings()
-embeddings = GoogleGenerativeAIEmbeddings(model=settings.embedding_model, google_api_key=settings.google_api_key)
-result = embeddings.embed_query('test')
-print(f'Success! Vector length: {len(result)}')
-"
-
-# 4. Test vector database
-python -c "
-from app.rag.vectorstore import get_vectorstore
-vs = get_vectorstore()
-results = vs.similarity_search('test', k=1)
-print(f'Database has {len(results)} results')
-"
-```
-
-### Working Test Questions (with minimal dataset)
-
-After creating test data, these questions will work:
-
-```bash
-# Dictionary operations
-curl -X POST localhost:8000/ask -H "Content-Type: application/json" \
-  -d '{"question": "How do I merge two dictionaries in Python?"}'
-
-# List comprehensions
-curl -X POST localhost:8000/ask -H "Content-Type: application/json" \
-  -d '{"question": "What is list comprehension?"}'
-
-# Exception handling
-curl -X POST localhost:8000/ask -H "Content-Type: application/json" \
-  -d '{"question": "How to handle exceptions in Python?"}'
-```
-
-### Configuration Reference
-
-**Working .env Configuration:**
-```bash
-# Google AI Studio API key
-GOOGLE_API_KEY=your_api_key_here
-
-# Models (verified working as of 2025)
-GENERATION_MODEL=gemini-2.5-flash
-EMBEDDING_MODEL=models/gemini-embedding-001
-
-# Database settings
-CHROMA_DIR=./chroma_db
-CHROMA_COLLECTION=python_qa
-
-# API settings
-CORS_ORIGINS=http://localhost:3000
-RETRIEVAL_K=5
-MAX_RELEVANCE_DISTANCE=0.60
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
 ```
 
 ---
 
-## Project structure
+## Key Design Decisions
 
-```
-backend/
-  app/
-    main.py            FastAPI app factory + lifespan pipeline init
-    api/               routes (ask, health) + Pydantic schemas
-    rag/               embeddings, vectorstore, retriever, grounded chain
-    core/config.py     pydantic-settings configuration
-  scripts/
-    download_data.py   Kaggle dataset fetch
-    ingest.py          filter → clean → embed pipeline (resumable)
-    run_test_queries.py integration test runner → docs/test_results.md
-  tests/               offline unit tests (16)
-frontend/              Next.js 16 + TypeScript + Tailwind chat UI
-docs/                  architecture, slides, test results
-```
+| Decision | Rationale |
+|---|---|
+| Hybrid dense + sparse retrieval | Dense search misses exact terms (e.g. `KeyError`, `pd.merge`); sparse search misses paraphrased questions. RRF combines both signals so the best of each surfaces |
+| MMR on dense candidates | Prevents returning 8 near-duplicate Stack Overflow answers; diverse context produces richer LLM synthesis |
+| MongoDB as knowledge base store | ChromaDB is ephemeral in a container. MongoDB is persistent and cloud-hosted; ChromaDB rebuilds from it on every cold start so no large files are baked into the Docker image |
+| Background async rebuild | `asyncio.create_task()` runs the ChromaDB rebuild without blocking startup. Railway's healthcheck passes immediately; the index becomes available gradually |
+| SSE streaming over WebSockets | One-directional server→client token stream is all that's needed. SSE is simpler, works over HTTP/1.1, and requires no handshake overhead |
+| LLM fallback on empty retrieval | A robotic "I don't know" response is a poor user experience. When the corpus has nothing, the LLM answers from general Python expertise — clearly labelled so the user knows the source |
+| Conversation history injected via MessagesPlaceholder | Last 10 messages per session are passed to the LLM as HumanMessage/AIMessage objects. Follow-up questions resolve naturally without the user repeating context |
+| JWT stateless auth | Any backend instance verifies any token — no sticky sessions needed, horizontal scaling is straightforward |
 
 ---
 
-*Submitted for the Analytics Vidhya AI Engineer assessment. Per the assessment NDA,
-keep this repository private until the hiring process concludes.*
+## Scaling for 100+ Concurrent Users
+
+| Layer | Strategy |
+|---|---|
+| Backend | FastAPI async handlers support many concurrent SSE streams per instance. Add Railway replicas behind a load balancer — JWT auth means any instance handles any request |
+| LLM API | Queue requests with Redis + asyncio; users wait in a visible queue rather than getting timeouts at peak load |
+| Retrieval cache | Cache ChromaDB + MongoDB results in Redis (60s TTL). Identical or similar questions reuse cached results, reducing both latency and Gemini API cost |
+| Vector DB | Replace ChromaDB with Pinecone or Weaviate at scale — both are managed, horizontally scalable, and support MMR natively |
+| MongoDB | Motor connection pool (50–100 connections); Atlas auto-scales read replicas for high read throughput |
+| Cost | Gemini 2.5 Flash ≈ $0.075/M tokens. 100 users × 500 tokens/answer = 50k tokens/min at peak. A 40% cache hit rate halves the API cost |
+
+---
+
+*Submitted by Bhavik — Analytics Vidhya AI Engineer Assessment 2026*
